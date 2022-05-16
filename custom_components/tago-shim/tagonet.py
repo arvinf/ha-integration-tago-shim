@@ -2,7 +2,6 @@ import sys, os
 import struct
 import time
 import random
-import libscrc
 import hexdump
 import socket
 from enum import Enum
@@ -16,6 +15,16 @@ from pymodbus.transaction import ModbusRtuFramer
 from pymodbus.factory import ClientDecoder
 from threading import Lock
 import logging
+import crcmod
+
+crc16 = None
+def calc_modbuscrc(data):
+    global crc16
+    #return libscrc.modbus(data)
+    if crc16 is None:
+        crc16 = crcmod.mkCrcFun(0x18005, rev=True, initCrc=0xFFFF, xorOut=0x0000)
+    return crc16(data)
+
 
 class TagoEvents(object):
     def __init__(self, host, port):
@@ -277,7 +286,7 @@ class TagoDevice(object):
 
             regs.append([0, 0, 0, 0])
 
-            cksum = libscrc.modbus(bytes([x for sl in regs for item in sl for x in [item >> 8, item & 0xFF]]))
+            cksum = calc_modbuscrc(bytes([x for sl in regs for item in sl for x in [item >> 8, item & 0xFF]]))
 
             node = int(config['modbus_address'], 0)
             logging.info('Updating config for {} at 0x{:2x}'.format(devid, node))
@@ -382,7 +391,7 @@ class TagoDevice(object):
 
         if len(data) % 4:
             data += bytes('\0'.encode('utf-8') * (4 - (len(data) % 4)))
-        crc = libscrc.modbus(data)
+        crc = calc_modbuscrc(data)
         send_size = 64
         offset = 0
 

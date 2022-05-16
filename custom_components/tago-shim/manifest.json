@@ -11,7 +11,7 @@
     "SimpleWebSocketServer==0.1.1",
     "pymodbus==2.5.2",
     "hexdump==3.3",
-    "libscrc==1.7.1",
+    "libscrc>=1.6",
     "sqlitedict==1.7.0"
   ],
   "ssdp": [],

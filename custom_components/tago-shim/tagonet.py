@@ -46,6 +46,7 @@ class TagoEvents(object):
                 except socket.timeout:
                     self.sock.close()
                     self.sock = None
+                    return
 
                 if len(data) < 6:
                     return

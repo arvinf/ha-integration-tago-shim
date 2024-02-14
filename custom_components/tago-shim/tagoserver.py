@@ -9,6 +9,7 @@ from SimpleWebSocketServer import WebSocket, SimpleWebSocketServer
 import uuid
 import logging
 import threading
+import os
 
 class TagoEventServer(SimpleWebSocketServer):
     clients = set()
@@ -29,117 +30,109 @@ class TagoEventServer(SimpleWebSocketServer):
             self.clients.remove(self)
             logging.info('closed {}'.format(self.address))
 
-    def __init__(self, host, port, linkHost, linkPort):
+    def __init__(self, host, port, linkHost, linkPort, stop_event):
         super().__init__(host, port, TagoEventServer.EventHandler)
         self.host = host
         self.port = port
-        self.run_thread = True  
-        self.events = None
-
-        threading.Thread(target=self.event_worker, args=(linkHost, linkPort)).start()
+        self.stop_event = stop_event
+        self.thread = threading.Thread(target=self.event_worker, args=(linkHost, linkPort)).start()
 
     def serve(self):
         logging.info('Running websocket server on {}:{}'.format(self.host, self.port))
         threading.Thread(target=self.serveforever).start()    
 
-    def stop(self):
-        logging.warning('exit server')
-        self.run_thread = False
-        if self.events:
-            self.events.stop()
-        logging.warning('exit server DONE')
-
     def event_worker(self, host, port):
-        self.events = TagoEvents(host, port)
-        while self.run_thread:
+        self.events = TagoEvents(host, port, self.stop_event)
+        while not self.stop_event.is_set():
             time.sleep(0.05)
             try:
                 result = self.events.getNext()
                 for c in TagoEventServer.clients.copy():
                     c.sendMessage(json.dumps(result))
             except Exception as e:
-                        logging.error('event_worker Exception: {}'.format(e))
-                        time.sleep(1)
-                        continue
+                logging.error('event_worker Exception: {}'.format(e))
+                time.sleep(1)
+                continue
 
-tagoapi = None
+# tagoapi = None
 ##
 ## REST API
 ##
-app = Flask(__name__)
-cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
+def flask_thread(tagoapi, port):
+    app = Flask(__name__)
 
-@app.route("/api/<tid>/rename_device", methods=['POST', 'GET'])
-def rename(tid):
-    tagoapi.rename_device(tid, request.json['name'])
-    return {'status': 'ok'}
-    
-@app.route("/api/<tid>/rename_channel", methods=['POST', 'GET'])
-def rename_channel(tid):
-    tagoapi.rename_channel(tid, request.json['ch'], request.json['name'])
-    return {'status': 'ok'}
+    cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-@app.route("/api/<tid>/info")
-def info(tid):
-    return tagoapi.device_info(tid)
+    @app.route("/api/<tid>/rename_device", methods=['POST', 'GET'])
+    def rename(tid):
+        tagoapi.rename_device(tid, request.json['name'])
+        return {'status': 'ok'}
+        
+    @app.route("/api/<tid>/rename_channel", methods=['POST', 'GET'])
+    def rename_channel(tid):
+        tagoapi.rename_channel(tid, request.json['ch'], request.json['name'])
+        return {'status': 'ok'}
 
-@app.route("/api/<tid>/identify")
-def identify(tid):
-    tagoapi.identify_device(tid)
-    return {'status': 'ok'}
+    @app.route("/api/<tid>/info")
+    def info(tid):
+        return tagoapi.device_info(tid)
 
-@app.route("/api/<tid>/reboot")
-def reboot(tid):
-    tagoapi.reboot_device(tid)
-    return {'status': 'ok'}
+    @app.route("/api/<tid>/identify")
+    def identify(tid):
+        tagoapi.identify_device(tid)
+        return {'status': 'ok'}
 
-@app.route("/api/<tid>/do", methods=['POST', 'GET'])
-def take_action(tid):
-    commands = request.json
-    for item in commands:
-        # logging.info(item)
-        channel = item.get('ch', 0)
-        if channel == 0: continue
+    @app.route("/api/<tid>/reboot")
+    def reboot(tid):
+        tagoapi.reboot_device(tid)
+        return {'status': 'ok'}
 
-        action = item.get('action', 'nop').upper()
-        value = item.get('value', 0)
-        rate = item.get('rate', 100)
+    @app.route("/api/<tid>/do", methods=['POST', 'GET'])
+    def take_action(tid):
+        commands = request.json
+        for item in commands:
+            # logging.info(item)
+            channel = item.get('ch', 0)
+            if channel == 0: continue
 
-        tagoapi.device_action(tid, channel, action, value, rate)
-                             
-    return {'status': 'ok'}
+            action = item.get('action', 'nop').upper()
+            value = item.get('value', 0)
+            rate = item.get('rate', 100)
 
-## rescan all devices on the bus
-@app.route("/api/rescan_all")
-def rescan_all():
-    return tagoapi.rescan_bus()
+            tagoapi.device_action(tid, channel, action, value, rate)
+                                 
+        return {'status': 'ok'}
 
-## list all devices
-@app.route("/api/list_devices")
-def list():
-    return tagoapi.list_devices()
+    ## rescan all devices on the bus
+    @app.route("/api/rescan_all")
+    def rescan_all():
+        return tagoapi.rescan_bus()
 
-@app.route("/<path:path>")
-def static_files_root(path):
-    return send_from_directory('build', path)
+    ## list all devices
+    @app.route("/api/list_devices")
+    def list():
+        return tagoapi.list_devices()
 
-@app.errorhandler(404)
-def page_not_found(e):
-    return send_from_directory('build', 'index.html')
+    @app.route("/<path:path>")
+    def static_files_root(path):
+        return send_from_directory('build', path)
 
-@app.route("/static/css/<path:path>")
-def static_files_static_css(path):
-    return send_from_directory('build/static/css', path)
+    @app.errorhandler(404)
+    def page_not_found(e):
+        return send_from_directory('build', 'index.html')
 
-@app.route("/static/js/<path:path>")
-def static_files_static_js(path):
-    return send_from_directory('build/static/js', path)
+    @app.route("/static/css/<path:path>")
+    def static_files_static_css(path):
+        return send_from_directory('build/static/css', path)
+
+    @app.route("/static/js/<path:path>")
+    def static_files_static_js(path):
+        return send_from_directory('build/static/js', path)
+
+    app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
 
 
-import os
-
-def run_server(bridge_url, http_port=5000, ws_port=8000, db_path='data'):
-    global tagoapi
+def run_server(bridge_url, http_port=5000, ws_port=8000, db_path='data', stop_event=None):
     ## Extract port from host url if provided
     parts = bridge_url.split(':')
     if len(parts) > 1:
@@ -154,10 +147,11 @@ def run_server(bridge_url, http_port=5000, ws_port=8000, db_path='data'):
     MB_PORT = int(os.environ.get('MB_PORT', bridge_port))
     DB_PATH = os.environ.get('DB_PATH', 'data')
 
-    server = TagoEventServer('', WS_PORT, MB_HOST, MB_PORT)
+    server = TagoEventServer('', WS_PORT, MB_HOST, MB_PORT, stop_event)
     server.serve()
 
-    tagoapi = TagoApi(host=MB_HOST, port=MB_PORT, dbpath=DB_PATH)    
+    tagoapi = TagoApi(host=MB_HOST, port=MB_PORT, dbpath=DB_PATH)
 
-    ## start API server
-    app.run(host='0.0.0.0', port=HTTP_PORT, threaded=False, debug=False)
+    flask = threading.Thread(name='Front End', target=flask_thread, args=(tagoapi, HTTP_PORT))
+    flask.setDaemon(True)
+    flask.start()

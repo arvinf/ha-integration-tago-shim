@@ -4,62 +4,60 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.const import CONF_HOST, ATTR_ID
+import homeassistant.helpers.config_validation as cv
 
 import logging
 import threading
 import time
 import os
 from .tagoserver import run_server
-from .const import DOMAIN
+from .const import DOMAIN, CONF_NET_BRIDGE_URL
+import voluptuous as vol
 
-_LOGGER = logging.getLogger(__name__)
 
-_thread = None
+CONFIG_SCHEMA = vol.Schema(
+    {
+        DOMAIN: vol.All(
+            cv.ensure_list,
+            [
+                {
+                    vol.Required(CONF_NET_BRIDGE_URL): cv.string,
+                }
+            ],
+        )
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+stop_event = threading.Event()
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    _LOGGER.info('Tago Shim Setup')
+  hass.data.setdefault(DOMAIN, {})
+  logging.info('Tago Shim Setup')
 
-    cfg = config.get(DOMAIN)
-    _LOGGER.info('Host cfg {}'.format(cfg))
-    return True
+  cfg = config.get(DOMAIN)
+  logging.info(f'Host cfg {cfg}')
+  return True
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    config = entry.data
-    host = config[CONF_HOST]
-    
-    _LOGGER.info('Bridge URL {}'.format(host))
+  config = entry.data
+  url = config[CONF_NET_BRIDGE_URL]
+  logging.info(f'Bridge URL {url}')
 
-    global _thread
-    _thread = ApiServerThread(hass, host)
-    _thread.start()
+  global stop_event
+  run_server(bridge_url=url, 
+             db_path=os.path.abspath(os.path.dirname(__file__)) + '/data',
+             stop_event=stop_event)
 
-    return True
-
+  return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    global _thread
-    if _thread:
-      _thread.stop()
-      _thread.join()
+    """Unload a config entry."""
+    global stop_event
+    if stop_event:
+      logging.info('requesting stop')
+      stop_event.set()
+      time.sleep(2)
 
     return True
-
-class ApiServerThread(threading.Thread):
-  def __init__(self, hass, url):
-    threading.Thread.__init__(self)
-
-    self.run_thread = True
-    self.hass = hass
-    self.bridge_url = url
-    self.api_server = None
-
-  def stop(self):
-    self.run_thread = False
-    self.api_server.stop()
-
-  def run(self):
-    while self.run_thread:
-      time.sleep(1)
-      self.api_server = run_server(bridge_url=self.bridge_url, 
-                 db_path=os.path.abspath(os.path.dirname(__file__)) + '/data')
-    logging.warning('Exiting')

@@ -17,12 +17,12 @@ class TagoApi(object):
                 
 
     def __init__(self, host, port, dbpath='.'):
-        logging.info('Host: {} Port: {} DbPath: {}'.format(host, port, dbpath))
+        logging.info(f'Host: {host} Port: {port} DbPath: {dbpath}')
 
         if not os.path.exists(dbpath):
             os.mkdir(dbpath)
 
-        dbfile = '{}/devices.sqlite'.format(dbpath)
+        dbfile = f'{dbpath}/devices.sqlite'
         self.host = host
         self.port = port
         self.net = TagoDevice(host, port)
@@ -38,7 +38,7 @@ class TagoApi(object):
                 logging.error(e)
 
         for k in self.devices.keys():
-                logging.info('{}: {}'.format(k, self.devices[k]))
+                logging.info(f'{k}: {self.devices[k]}')
 
         # threading.Thread(target=self.watchdog).start()    
 
@@ -81,15 +81,15 @@ class TagoApi(object):
             if self.net.assignAddress(duplicates[k], k, new_addr):
                 registery[k] = new_addr
                 new_addr = get_random_address()
-                logging.info('Assigned new address {} to {}'.format(new_addr, k))
+                logging.info(f'Assigned new address {new_addr} to {k}')
             else:
-                logging.error('Could not assign new address {} to {}'.format(new_addr, k))
+                logging.error(f'Could not assign new address {new_addr} to {k}')
 
         return registery
 
     def __lookup_addr(self, tid):
         if not tid in self.devices:
-            raise Exception('Device {} not found'.format(tid))
+            raise Exception(f'Device {tid} not found')
         
         return self.devices[tid]['addr']
 
@@ -100,7 +100,7 @@ class TagoApi(object):
         }
 
     def rename_channel(self, tid, ch, name):
-        key = '{}/{}'.format(tid , ch)
+        key = f'{tid}/{ch}'
         self.channels[key] = {'name': name}
 
     def scan(self, addr):
@@ -145,7 +145,7 @@ class TagoApi(object):
             self.net.directAction(addr, channel, action.value, value, rate)
             self.update_exec_time()
         except Exception as e: 
-            logging.error('Action failed {}'.format(e))
+            logging.error(f'Action failed {e}')
             pass
 
     ## rescan all devices on the bus
@@ -177,7 +177,7 @@ class TagoApi(object):
             results[d] = {'alias': name, 'addr': self.devices[d]['addr'],
                            'dimmers': {}}
             for i in range(8):
-                key = '{}/{}'.format(d , i+1)
+                key = f'{d}/{i+1}'
                 results[d]['dimmers'][key] = {'ch': i+1}
 
                 ## lookup channel alias if it exists

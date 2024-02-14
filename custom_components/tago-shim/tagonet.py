@@ -27,16 +27,41 @@ def calc_modbuscrc(data):
 
 
 class TagoEvents(object):
-    def __init__(self, host, port):
+    def __init__(self, host, port, stop_event):
         self.sock = None
         self.host = host
         self.port = port
-        self.run_thread = True
+        self.stop_event = stop_event
 
-    def stop(self):
-        self.run_thread = False
+    def disconnect(self):
         if self.sock:
+            logging.info(f'Disconnecting from {self.host}:{self.port} for events')
             self.sock.close()
+        self.sock = None
+
+    def connect(self):
+        if self.sock is not None:
+            return
+
+        logging.info(f'Connecting to {self.host}:{self.port} for events')
+        self.sock= socket.create_connection((self.host, self.port))
+        self.sock.settimeout(120)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        try:
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 5)
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 5)
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 2)
+        except:
+            pass
+
+        try:
+            self.sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPALIVE, 5)
+        except:
+            pass
+
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+
+        logging.info(f'Connected to {self.host}:{self.port}')
 
     def getNext(self):
         try:
@@ -44,9 +69,7 @@ class TagoEvents(object):
                 try:
                     data = self.sock.recv(6)
                 except socket.timeout:
-                    self.sock.close()
-                    self.sock = None
-                    return
+                    self.disconnect()
 
                 if len(data) < 6:
                     return
@@ -58,19 +81,12 @@ class TagoEvents(object):
 
                 return data
 
-            while self.run_thread:
-                if self.sock is None:
-                    logging.info('Listening for events on {host}:{port}'.format(host=self.host, port=self.port))
-                    self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    self.sock.connect((self.host, self.port))
-                    self.sock.settimeout(120)
-                    logging.info('Connected to {host}:{port}'.format(host=self.host, port=self.port))
+            while not self.stop_event.is_set():
+                self.connect()
 
                 data = modbus_get_next()
                 if data is None:
                     continue
-                # logging.info('\nPacket {} bytes'.format(len(data)))
-                # hexdump.hexdump(data)
 
                 (addr, fc, mei_code) = struct.unpack('<BBB', data[0:3])
                 data = data[3:]
@@ -105,13 +121,14 @@ class TagoEvents(object):
                 if len(result):
                     return result
 
+            self.disconnect()
+
         except Exception as e:
-            logging.error('TagoEvents Exception: {}'.format(e))
+            logging.error(f'TagoEvents Exception: {e}')
             try:
-                self.sock.close()
+                self.disconnect()
             except:
                 pass
-            self.sock = None
             time.sleep(1)
             raise
         

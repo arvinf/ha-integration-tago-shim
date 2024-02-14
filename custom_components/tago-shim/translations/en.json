@@ -1,19 +1,28 @@
 {
     "config": {
-        "abort": {
-            "already_configured": "Device is already configured"
+        "step": {
+            "user": {
+                "title": "Tago Hub",
+                "data": {
+                    "rs485_bridge_url": "Modbus Bridge"
+                },
+                "data_description": {
+                    "rs485_bridge_url": "The Modbus to TCP/IP bridge address host:port"
+                }
+            }
         },
         "error": {
             "cannot_connect": "Failed to connect",
-            "invalid_auth": "Invalid authentication",
             "unknown": "Unexpected error"
         },
-        "step": {
-            "user": {
-                "data": {
-                    "host": "Modbus Bridge"
-                }
-            }
+        "abort": {
+            "already_configured": "Device is already configured"
+        }
+    },
+    "options": {
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "unknown": "Unexpected error"
         }
     }
 }

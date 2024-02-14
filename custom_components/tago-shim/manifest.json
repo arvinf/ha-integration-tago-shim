@@ -7,13 +7,14 @@
   "requirements": [
     "websocket-client==1.3.2",
     "Flask==2.0.1",
+    "Werkzeug==2.2.2",
     "Flask-Cors==3.0.10",
     "SimpleWebSocketServer==0.1.1",
+    "crcmod==1.7",
     "pymodbus==2.5.2",
     "hexdump==3.3",
     "sqlitedict==1.7.0"
   ],
-  "ssdp": [],
   "zeroconf": [],
   "homekit": {},
   "dependencies": [],
